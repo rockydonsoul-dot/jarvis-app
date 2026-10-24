@@ -128,61 +128,230 @@ jobs:
 
           import android.Manifest
           import android.app.Activity
+          import android.content.Context
           import android.content.Intent
           import android.content.pm.PackageManager
+          import android.graphics.Canvas
+          import android.graphics.Color
+          import android.graphics.DashPathEffect
+          import android.graphics.Paint
+          import android.graphics.Path
+          import android.graphics.drawable.GradientDrawable
           import android.net.Uri
           import android.os.Build
           import android.os.Bundle
+          import android.os.SystemClock
           import android.provider.Settings
           import android.view.Gravity
+          import android.view.View
           import android.widget.Button
           import android.widget.LinearLayout
           import android.widget.TextView
+          import android.widget.Toast
+
+          class HeartView(context: Context) : View(context) {
+              var active = false
+              var speaking = false
+              private val heart = Path()
+              private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+
+              init {
+                  heart.moveTo(0f, 28f)
+                  heart.cubicTo(-40f, 2f, -30f, -30f, -12f, -30f)
+                  heart.cubicTo(-4f, -30f, 0f, -24f, 0f, -20f)
+                  heart.cubicTo(0f, -24f, 4f, -30f, 12f, -30f)
+                  heart.cubicTo(30f, -30f, 40f, 2f, 0f, 28f)
+                  heart.close()
+              }
+
+              override fun onDraw(c: Canvas) {
+                  val w = width.toFloat()
+                  val h = height.toFloat()
+                  val cx = w / 2f
+                  val cy = h / 2f
+                  val u = minOf(w, h) / 2f * 0.96f / 104f
+                  val t = SystemClock.uptimeMillis()
+
+                  p.style = Paint.Style.STROKE
+                  p.pathEffect = null
+                  p.color = Color.parseColor("#4A1D35")
+                  p.strokeWidth = 1.5f * u
+                  c.drawCircle(cx, cy, 104f * u, p)
+
+                  c.save()
+                  c.rotate((t / 60f) % 360f, cx, cy)
+                  p.color = Color.parseColor("#8A3A5E")
+                  p.strokeWidth = 8f * u
+                  p.pathEffect = DashPathEffect(floatArrayOf(3f * u, 9f * u), 0f)
+                  c.drawCircle(cx, cy, 96f * u, p)
+                  c.restore()
+
+                  c.save()
+                  c.rotate(-((t / 35f) % 360f), cx, cy)
+                  p.color = Color.parseColor("#E8588A")
+                  p.strokeWidth = 3f * u
+                  p.pathEffect = DashPathEffect(floatArrayOf(130f * u, 43f * u), 0f)
+                  c.drawCircle(cx, cy, 80f * u, p)
+                  c.restore()
+
+                  p.pathEffect = null
+                  p.style = Paint.Style.FILL
+                  p.color = Color.parseColor("#2A1220")
+                  c.drawCircle(cx, cy, 62f * u, p)
+                  p.style = Paint.Style.STROKE
+                  p.color = Color.parseColor("#F4A6C0")
+                  p.strokeWidth = 3f * u
+                  c.drawCircle(cx, cy, 62f * u, p)
+
+                  val period = if (speaking) 140.0 else 420.0
+                  val beat = ((Math.sin(t / period) + 1.0) / 2.0).toFloat()
+                  val amp = if (speaking) 0.14f else if (active) 0.07f else 0.02f
+                  val k = u * 1.05f * (1f + amp * beat)
+                  c.save()
+                  c.translate(cx, cy - u)
+                  c.scale(k, k)
+                  p.style = Paint.Style.FILL
+                  p.color = Color.parseColor("#E8588A")
+                  c.drawPath(heart, p)
+                  p.style = Paint.Style.STROKE
+                  p.color = Color.parseColor("#FBD3E1")
+                  p.strokeWidth = 2f
+                  c.drawPath(heart, p)
+                  c.restore()
+
+                  p.style = Paint.Style.FILL
+                  smallHeart(c, p, cx - 104f * u, cy - 85f * u, u * 0.3f, "#A8446E")
+                  smallHeart(c, p, cx + 104f * u, cy - 67f * u, u * 0.22f, "#F4A6C0")
+                  smallHeart(c, p, cx - 86f * u, cy + 97f * u, u * 0.24f, "#F4A6C0")
+                  smallHeart(c, p, cx + 92f * u, cy + 87f * u, u * 0.3f, "#A8446E")
+
+                  postInvalidateOnAnimation()
+              }
+
+              private fun smallHeart(c: Canvas, paint: Paint, x: Float, y: Float, s: Float, color: String) {
+                  c.save()
+                  c.translate(x, y)
+                  c.scale(s, s)
+                  paint.color = Color.parseColor(color)
+                  c.drawPath(heart, paint)
+                  c.restore()
+              }
+          }
 
           class MainActivity : Activity() {
 
+              private lateinit var statusView: TextView
+              private lateinit var transcript: TextView
+              private lateinit var button: Button
+              private lateinit var heartView: HeartView
+              private val matchParent = LinearLayout.LayoutParams.MATCH_PARENT
+              private val wrapContent = LinearLayout.LayoutParams.WRAP_CONTENT
+
+              private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+
+              private fun box(fill: String, stroke: String, strokeDp: Int, radiusDp: Int): GradientDrawable {
+                  val g = GradientDrawable()
+                  g.setColor(Color.parseColor(fill))
+                  g.setStroke(dp(strokeDp), Color.parseColor(stroke))
+                  g.cornerRadius = dp(radiusDp).toFloat()
+                  return g
+              }
+
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
+                  window.statusBarColor = Color.parseColor("#1A0A14")
+                  window.navigationBarColor = Color.parseColor("#1A0A14")
 
-                  val layout = LinearLayout(this)
-                  layout.orientation = LinearLayout.VERTICAL
-                  layout.gravity = Gravity.CENTER
-                  layout.setPadding(48, 48, 48, 48)
+                  val root = LinearLayout(this)
+                  root.orientation = LinearLayout.VERTICAL
+                  root.gravity = Gravity.CENTER_HORIZONTAL
+                  root.setBackgroundColor(Color.parseColor("#1A0A14"))
+                  root.setPadding(dp(20), dp(36), dp(20), dp(24))
 
-                  val info = TextView(this)
-                  info.text = "JARVIS\n\nDo steps 1, 2, 3 in order.\nThen say: Jarvis, open YouTube"
-                  info.textSize = 18f
-                  layout.addView(info)
+                  val title = TextView(this)
+                  title.text = "Jarvis"
+                  title.textSize = 24f
+                  title.letterSpacing = 0.2f
+                  title.setTextColor(Color.parseColor("#F4A6C0"))
+                  title.gravity = Gravity.CENTER
+                  root.addView(title)
 
-                  layout.addView(makeButton("1. Allow microphone") { askPermissions() })
-                  layout.addView(makeButton("2. Allow display over other apps") {
-                      startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName)))
-                  })
-                  layout.addView(makeButton("3. Start Jarvis") { startJarvis() })
-                  layout.addView(makeButton("Stop Jarvis") { stopService(Intent(this, JarvisService::class.java)) })
+                  statusView = TextView(this)
+                  statusView.textSize = 13f
+                  statusView.setTextColor(Color.parseColor("#A8708A"))
+                  statusView.gravity = Gravity.CENTER
+                  root.addView(statusView)
 
-                  setContentView(layout)
+                  heartView = HeartView(this)
+                  heartView.setOnClickListener { toggle() }
+                  root.addView(heartView, LinearLayout.LayoutParams(matchParent, 0, 1f))
+
+                  transcript = TextView(this)
+                  transcript.textSize = 15f
+                  transcript.setTextColor(Color.parseColor("#FBD3E1"))
+                  transcript.setPadding(dp(16), dp(14), dp(16), dp(14))
+                  transcript.minHeight = dp(120)
+                  transcript.background = box("#2A1220", "#6B2A47", 1, 14)
+                  root.addView(transcript, LinearLayout.LayoutParams(matchParent, wrapContent))
+
+                  button = Button(this)
+                  button.isAllCaps = false
+                  button.textSize = 16f
+                  button.setTextColor(Color.parseColor("#F4A6C0"))
+                  button.background = box("#2A1220", "#E8588A", 2, 28)
+                  button.setOnClickListener { toggle() }
+                  val bp = LinearLayout.LayoutParams(matchParent, dp(56))
+                  bp.topMargin = dp(16)
+                  root.addView(button, bp)
+
+                  setContentView(root)
               }
 
-              private fun makeButton(label: String, action: () -> Unit): Button {
-                  val b = Button(this)
-                  b.text = label
-                  b.setOnClickListener { action() }
-                  return b
+              override fun onResume() {
+                  super.onResume()
+                  JarvisBus.onChange = { refresh() }
+                  refresh()
               }
 
-              private fun askPermissions() {
-                  val perms = mutableListOf(Manifest.permission.RECORD_AUDIO)
-                  if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
-                  requestPermissions(perms.toTypedArray(), 1)
+              override fun onPause() {
+                  JarvisBus.onChange = null
+                  super.onPause()
               }
 
-              private fun startJarvis() {
+              private fun refresh() {
+                  statusView.text = JarvisBus.status
+                  heartView.active = JarvisBus.running
+                  heartView.speaking = JarvisBus.speaking
+                  val you = if (JarvisBus.you.isEmpty()) "..." else JarvisBus.you
+                  val reply = if (JarvisBus.jarvis.isEmpty()) "..." else JarvisBus.jarvis
+                  transcript.text = "You\n" + you + "\n\nJarvis\n" + reply
+                  button.text = if (JarvisBus.running) "Stop Jarvis" else "Start Jarvis"
+              }
+
+              private fun toggle() {
+                  if (JarvisBus.running) {
+                      stopService(Intent(this, JarvisService::class.java))
+                      return
+                  }
                   if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                      askPermissions()
+                      val perms = mutableListOf(Manifest.permission.RECORD_AUDIO)
+                      if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
+                      requestPermissions(perms.toTypedArray(), 1)
+                      return
+                  }
+                  if (!Settings.canDrawOverlays(this)) {
+                      Toast.makeText(this, "Allow display over other apps, then come back and tap again", Toast.LENGTH_LONG).show()
+                      startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName)))
                       return
                   }
                   startForegroundService(Intent(this, JarvisService::class.java))
+              }
+
+              override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+                  super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+                  if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                      toggle()
+                  }
               }
           }
           JARVIS_EOF
@@ -242,6 +411,9 @@ jobs:
                   } else {
                       startForeground(1, n)
                   }
+                  JarvisBus.running = true
+                  JarvisBus.status = "Starting..."
+                  JarvisBus.changed()
 
                   tts = TextToSpeech(this) { status ->
                       if (status == TextToSpeech.SUCCESS) {
@@ -267,6 +439,10 @@ jobs:
 
               private fun speak(text: String) {
                   speaking = true
+                  JarvisBus.speaking = true
+                  JarvisBus.jarvis = text
+                  JarvisBus.status = "Speaking..."
+                  JarvisBus.changed()
                   recognizer?.cancel()
                   tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis")
               }
@@ -301,6 +477,9 @@ jobs:
                   i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                   i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN")
                   recognizer?.startListening(i)
+                  JarvisBus.speaking = false
+                  JarvisBus.status = if (awake) "I am listening. Say your command." else "Listening for Jarvis"
+                  JarvisBus.changed()
               }
 
               private fun handleSpeech(text: String) {
@@ -322,6 +501,7 @@ jobs:
                       return
                   }
                   awake = false
+                  JarvisBus.you = text
                   runCommand(cmd)
               }
 
@@ -397,9 +577,30 @@ jobs:
 
               override fun onDestroy() {
                   running = false
+                  JarvisBus.running = false
+                  JarvisBus.speaking = false
+                  JarvisBus.status = "Stopped. Tap the heart to start"
+                  JarvisBus.changed()
                   recognizer?.destroy()
                   tts?.shutdown()
                   super.onDestroy()
+              }
+          }
+          JARVIS_EOF
+          mkdir -p app/src/main/java/com/jarvis/app
+          cat > app/src/main/java/com/jarvis/app/JarvisBus.kt <<'JARVIS_EOF'
+          package com.jarvis.app
+
+          object JarvisBus {
+              var running = false
+              var speaking = false
+              var status = "Tap the heart to start"
+              var you = ""
+              var jarvis = ""
+              var onChange: (() -> Unit)? = null
+
+              fun changed() {
+                  onChange?.invoke()
               }
           }
           JARVIS_EOF
